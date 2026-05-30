@@ -43,7 +43,10 @@ def build_dataset_rank(
     split="train",
     select=None,
 ):
-    ds = load_dataset("Aeala/ShareGPT_Vicuna_unfiltered")
+    ds = load_dataset(
+        "json",
+        data_files="data/ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json",
+    )
     ds = ds["train"]
     ds = ds.shuffle(seed=42)
     ds1 = ds.select(range(args.start, args.end))

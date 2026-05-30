@@ -25,7 +25,7 @@ from .coco_caption_prompt import build_prompt
 
 
 def load_data(args):
-    dataset = load_dataset("HuggingFaceM4/COCO", split="test")
+    dataset = load_dataset("HuggingFaceM4/COCO", split="test", trust_remote_code=True)
     imgid_indices = {d["imgid"]: idx for idx, d in enumerate(dataset)}
     filtered_dataset = dataset.select(imgid_indices.values())
     return filtered_dataset.shuffle(seed=42).select(range(0, 100))

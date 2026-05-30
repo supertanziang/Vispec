@@ -26,6 +26,15 @@ from .mme_prompt import build_prompt
 
 
 def load_data(args):
+    # MME 图片实际散在 MME_Benchmark_release_version/MME_Benchmark/<category>/(images/)?<name>
+    # 而 jsonl 里 image 字段只有文件名,这里递归建立 name -> 完整路径 的索引
+    img_root = os.path.join(args.data_folder, "MME_Benchmark_release_version/MME_Benchmark")
+    name2path = {}
+    for dp, _, fs in os.walk(img_root):
+        for fn in fs:
+            if fn.lower().endswith((".jpg", ".png", ".jpeg")):
+                name2path.setdefault(fn, os.path.join(dp, fn))
+
     data = []
     with open(
         os.path.join(args.data_folder, "llava_mme.jsonl"), "r", encoding="utf-8"
@@ -33,16 +42,7 @@ def load_data(args):
         lines = f.readlines()
         for l in lines:
             d = json.loads(l.strip())
-            d["image"] = Image.open(
-                open(
-                    os.path.join(
-                        args.data_folder,
-                        "MME_Benchmark_release_version/MME_Benchmark",
-                        d["image"],
-                    ),
-                    "rb",
-                )
-            )
+            d["image"] = Image.open(open(name2path[d["image"]], "rb"))
             d["text"] = d["text"].partition("\n")[0]
             data.append(d)
 

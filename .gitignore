@@ -214,3 +214,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ViSpec local data, weights and outputs (not to be tracked)
+data/
+model/
+baseline_results/
+results/
