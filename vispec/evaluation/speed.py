@@ -6,8 +6,8 @@ from transformers import AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("llava-hf/llava-v1.6-vicuna-7b-hf")
 
-baseline_dir = "baseline_results"
-result_dir = "results"
+baseline_dir = "results/baseline"
+result_dir = "results/spec"
 for model in [
     "llava",
     "llava_13b",

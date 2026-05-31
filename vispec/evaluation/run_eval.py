@@ -18,9 +18,9 @@ ViSpec 端到端速度评测脚本 (统一入口)
     python -m vispec.evaluation.run_eval --skip-baseline         # 只跑 spec(已有 baseline 时)
     python -m vispec.evaluation.run_eval --gpu 0                 # 指定 GPU
 
-输出路径(与 speed.py 兼容):
-    baseline -> baseline_results/{bench}_test/baseline_{model}/test-temperature-{t}.jsonl
-    spec     -> results/{bench}_test/{model}_{method}/test-temperature-{t}.jsonl
+输出路径(baseline 与 spec 结果统一在 results/ 下,各占一个子目录):
+    baseline -> results/baseline/{bench}_test/baseline_{model}/test-temperature-{t}.jsonl
+    spec     -> results/spec/{bench}_test/{model}_{method}/test-temperature-{t}.jsonl
 ====================================================================================
 """
 
@@ -63,9 +63,9 @@ SPEC_HPARAMS = {
 MAX_NEW_TOKEN = int(os.environ.get("VISPEC_MAX_NEW_TOKEN", 1024))   # 单条样本最多生成多少 token
 GPU = "0"                   # 默认用哪块 GPU(单卡评测)
 
-# ---- 4. 输出根目录(与 speed.py 硬编码一致,勿轻易改)------------------------------
-BASELINE_DIR = "baseline_results"
-RESULT_DIR = "results"
+# ---- 4. 输出根目录:baseline 与 spec 统一收纳到 results/ 下,各占一个子目录 ----------
+BASELINE_DIR = "results/baseline"
+RESULT_DIR = "results/spec"
 
 # ---- 5. 模型注册表 ---------------------------------------------------------------
 #   key            : 简称,同时作为输出路径里的 {model} 段(须与 speed.py 的循环一致)
@@ -117,13 +117,13 @@ BENCHMARKS = {
     # HR-Bench 是 4K/8K 高分辨率基准,图像 token 极多,单卡 80G 会 OOM(attention 矩阵爆炸)。
     # 需限制 processor 的 max_pixels 或多卡分布才能跑,默认不放进 DEFAULT_BENCHMARKS。
     "hr_bench": {"data_folder": None, "extra_args": []},
-    # —— 需手动下载数据到 data/<name> ——
-    "mme": {"data_folder": "data/MME", "extra_args": []},
-    "gqa": {"data_folder": "data/gqa", "extra_args": []},
-    "textvqa": {"data_folder": "data/textvqa", "extra_args": []},
-    "vqav2": {"data_folder": "data/vqav2", "extra_args": []},
-    "seed_bench": {"data_folder": "data/seed_bench", "extra_args": []},
-    "vizwiz": {"data_folder": "data/vizwiz", "extra_args": []},
+    # —— 需手动下载数据到 data/eval/<name> ——
+    "mme": {"data_folder": "data/eval/MME", "extra_args": []},
+    "gqa": {"data_folder": "data/eval/gqa", "extra_args": []},
+    "textvqa": {"data_folder": "data/eval/textvqa", "extra_args": []},
+    "vqav2": {"data_folder": "data/eval/vqav2", "extra_args": []},
+    "seed_bench": {"data_folder": "data/eval/seed_bench", "extra_args": []},
+    "vizwiz": {"data_folder": "data/eval/vizwiz", "extra_args": []},
     # —— 半自动:HF 下元数据 + 本地划分文件(项目自带于 vispec/data/scienceqa/) ——
     # test_number=100 与其他 benchmark 对齐(设为 -1 则跑全部 4241 条,约 6 小时)
     "sqa": {

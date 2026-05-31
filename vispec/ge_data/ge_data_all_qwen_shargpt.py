@@ -45,7 +45,7 @@ def build_dataset_rank(
 ):
     ds = load_dataset(
         "json",
-        data_files="data/ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json",
+        data_files="data/train/ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json",
     )
     ds = ds["train"]
     ds = ds.shuffle(seed=42)

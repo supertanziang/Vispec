@@ -612,8 +612,9 @@ for epoch in range(args.begin_epoch, num_epochs + 1):
             epoch,
         )
 
-    # if (epoch + 1) % train_config["save_freq"]:
-    if True:
+    # 每 save_freq 个 epoch 评估+保存一次;最后一个 epoch 强制保存,
+    # 保证 state_{num_epochs}/model.safetensors 一定产出(Stage 2 需要加载它)
+    if epoch % train_config["save_freq"] == 0 or epoch == num_epochs:
         top_3acc = [0 for _ in range(3)]
         correct = 0
         total = 0

@@ -398,7 +398,7 @@ if __name__ == "__main__":
     parser.add_argument("--num-q", type=int, default=2)
     parser.add_argument("--use-medusa", type=bool, default=False)
 
-    parser.add_argument("--data-folder", type=str, default="data/MME")
+    parser.add_argument("--data-folder", type=str, default="data/eval/MME")
 
     args = parser.parse_args()
 

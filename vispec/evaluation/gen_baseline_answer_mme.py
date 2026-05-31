@@ -449,7 +449,7 @@ if __name__ == "__main__":
         default="mc_sim_7b_63",
     )
 
-    parser.add_argument("--data-folder", type=str, default="data/MME")
+    parser.add_argument("--data-folder", type=str, default="data/eval/MME")
 
     args = parser.parse_args()
 

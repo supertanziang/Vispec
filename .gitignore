@@ -220,3 +220,6 @@ data/
 model/
 baseline_results/
 results/
+checkpoints/
+wandb/
+logs/

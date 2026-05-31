@@ -127,7 +127,7 @@ max_pixels = 1280 * 28 * 28
 processor = AutoProcessor.from_pretrained(
     bigname, use_fast=True, min_pixels=min_pixels, max_pixels=max_pixels
 )
-ds = build_dataset_rank(processor, "data/LLaVA-Pretrain/")
+ds = build_dataset_rank(processor, "data/train/LLaVA-Pretrain/")
 print(ds)
 bigmodel = AutoModelForImageTextToText.from_pretrained(
     bigname, device_map="auto", torch_dtype="auto"
