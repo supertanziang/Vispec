@@ -39,7 +39,7 @@ echo "   tmpdir      = $TMPDIR_DATA"
 echo "   cpdir       = $CPDIR"
 echo "=============================================================="
 
-accelerate launch --multi_gpu \
+accelerate launch --multi_gpu --num_processes=5\
   -m --mixed_precision=bf16 \
   vispec.train.main \
   --cpdir="$CPDIR" \

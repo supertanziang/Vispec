@@ -13,7 +13,7 @@ parent_dir = os.path.dirname(script_dir)
 import time
 
 import shortuuid
-from datasets import load_dataset
+from datasets import load_from_disk
 from tqdm import tqdm
 from transformers import LlavaNextForConditionalGeneration
 
@@ -27,7 +27,7 @@ from .mmvet_prompt import build_prompt
 
 
 def load_data(args):
-    data = load_dataset("whyu/mm-vet", split="test")
+    data = load_from_disk(args.data_folder)
     return data
 
 
@@ -429,6 +429,12 @@ if __name__ == "__main__":
         "--tree-choices",
         type=str,
         default="mc_sim_7b_63",
+    )
+    parser.add_argument(
+        "--data-folder",
+        type=str,
+        default="data/eval/mmvet",
+        help="本地 mmvet 数据集目录(load_from_disk 可读)",
     )
 
     args = parser.parse_args()

@@ -108,32 +108,34 @@ MODELS = {
 
 # ---- 6. Benchmark 注册表 ----------------------------------------------------------
 #   key          : 简称,作为输出路径里的 {bench}_test 段(须与 speed.py 循环一致)
-#   data_folder  : 需手动准备数据的传 --data-folder;None 表示 HF 自动下载,无需准备
+#   data_folder  : 本地数据目录,会作为 --data-folder 传给 gen_*_<bench>.py
+#                  统一约定:数据放在 data/eval/<name>/ 下(load_from_disk 可读)
 #   extra_args   : 该 benchmark 特有的命令行参数(如 sqa)
 BENCHMARKS = {
-    # —— 纯 HF 自动下载,无需手动准备数据 ——
-    "mmvet": {"data_folder": None, "extra_args": []},
+    # —— 本地 datasets(load_from_disk),数据在 data/eval/<name> 下 ——
+    "mmvet": {"data_folder": "data/eval/mmvet", "extra_args": []},
     "coco_caption": {"data_folder": None, "extra_args": []},
     # HR-Bench 是 4K/8K 高分辨率基准,图像 token 极多,单卡 80G 会 OOM(attention 矩阵爆炸)。
     # 需限制 processor 的 max_pixels 或多卡分布才能跑,默认不放进 DEFAULT_BENCHMARKS。
     "hr_bench": {"data_folder": None, "extra_args": []},
-    # —— 需手动下载数据到 data/eval/<name> ——
+    # —— 本地数据 ——
     "mme": {"data_folder": "data/eval/MME", "extra_args": []},
     "gqa": {"data_folder": "data/eval/gqa", "extra_args": []},
     "textvqa": {"data_folder": "data/eval/textvqa", "extra_args": []},
     "vqav2": {"data_folder": "data/eval/vqav2", "extra_args": []},
     "seed_bench": {"data_folder": "data/eval/seed_bench", "extra_args": []},
     "vizwiz": {"data_folder": "data/eval/vizwiz", "extra_args": []},
-    # —— 半自动:HF 下元数据 + 本地划分文件(项目自带于 vispec/data/scienceqa/) ——
+    # —— sqa: 数据(图片)在 data/eval/sqa/dataset, metadata 在 data/eval/sqa/metadata ——
     # test_number=100 与其他 benchmark 对齐(设为 -1 则跑全部 4241 条,约 6 小时)
     "sqa": {
-        "data_folder": None,
+        "data_folder": "data/eval/sqa/dataset",
         "extra_args": [
             "--test_split=test",
             "--test_number=100",
             "--shot_number=0",
             "--prompt_format=QCM-ALE",
-            "--data_root=vispec/data/scienceqa",
+            "--data_root=data/eval/sqa/metadata",
+            "--caption_file=data/eval/sqa/metadata/captions.json",
         ],
     },
 }

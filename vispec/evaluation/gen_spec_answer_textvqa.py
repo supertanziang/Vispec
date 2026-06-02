@@ -24,28 +24,15 @@ from .textvqa_prompt import build_prompt
 
 
 def load_data(args):
-    data = json.load(open(os.path.join(args.data_folder, "TextVQA_0.5.1_val.json")))
-    assert (
-        data["dataset_type"] == "val"
-        and data["dataset_name"] == "textvqa"
-        and data["dataset_version"] == "0.5.1"
-    )
+    from datasets import load_from_disk
+    raw = load_from_disk(args.data_folder)
     new_data = []
-    for d in data["data"]:
-        image = Image.open(
-            open(
-                os.path.join(
-                    args.data_folder,
-                    "train_images",
-                    d["image_id"] + ".jpg",
-                ),
-                "rb",
-            )
-        )
-        question = d["question"]
-        qid = d["question_id"]
-        new_data.append({"image": image, "question": question, "qid": qid})
-
+    for d in raw:
+        new_data.append({
+            "image": d["image"],
+            "question": d["question"],
+            "qid": d["question_id"],
+        })
     return Dataset.from_list(new_data).shuffle(seed=42).select(range(0, 100))
 
 

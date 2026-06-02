@@ -25,7 +25,8 @@ def load_data(args):
     problems = json.load(open(os.path.join(args.data_root, "problems.json")))
     pid_splits = json.load(open(os.path.join(args.data_root, "pid_splits.json")))
     captions = json.load(open(args.caption_file))["captions"]
-    data = load_dataset("derek-thomas/ScienceQA")
+    from datasets import load_from_disk
+    data = load_from_disk(args.data_folder)
 
     random.seed(42)
 
@@ -429,10 +430,14 @@ if __name__ == "__main__":
         default="mc_sim_7b_63",
     )
 
-    parser.add_argument("--data_root", type=str, default="vispec/data/scienceqa")
+    parser.add_argument("--data_root", type=str, default="data/eval/sqa/metadata")
     # parser.add_argument("--output_root", type=str, default="../results")
     parser.add_argument(
-        "--caption_file", type=str, default="vispec/data/scienceqa/captions.json"
+        "--caption_file", type=str, default="data/eval/sqa/metadata/captions.json"
+    )
+    parser.add_argument(
+        "--data-folder", type=str, default="data/eval/sqa/dataset",
+        help="本地 ScienceQA datasets 目录(load_from_disk 可读)",
     )
     # parser.add_argument('--model', type=str, default='gpt3')
     parser.add_argument("--options", type=list, default=["A", "B", "C", "D", "E"])

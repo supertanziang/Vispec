@@ -24,19 +24,15 @@ from .vqav2_prompt import build_prompt
 
 
 def load_data(args):
+    from datasets import load_from_disk
+    raw = load_from_disk(args.data_folder)
     data = []
-    with open(
-        os.path.join(args.data_folder, "llava_vqav2_mscoco_test2015.jsonl"), "r"
-    ) as f:
-        lines = f.readlines()
-        for l in lines:
-            d = json.loads(l.strip())
-            d["image"] = Image.open(
-                os.path.join(args.data_folder, "test2015", d["image"])
-            )
-            d["text"] = d["text"].partition("\n")[0]
-            data.append(d)
-
+    for d in raw:
+        data.append({
+            "question_id": d["question_id"],
+            "image": d["image"],
+            "text": d["question"].partition("\n")[0],
+        })
     return Dataset.from_list(data).shuffle(seed=42).select(range(0, 100))
 
 

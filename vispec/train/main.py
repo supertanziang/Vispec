@@ -519,7 +519,11 @@ for epoch in range(args.begin_epoch, num_epochs + 1):
     num_batches = 0
     model.train()
     for batch_idx, data in enumerate(
-        tqdm(train_loader, disable=not accelerator.is_local_main_process)
+        tqdm(
+            train_loader,
+            desc=f"Stage1 train epoch {epoch}/{num_epochs}",
+            disable=not accelerator.is_local_main_process,
+        )
     ):
 
         with accelerator.accumulate(model):
@@ -626,7 +630,11 @@ for epoch in range(args.begin_epoch, num_epochs + 1):
 
         k_acc = [[] for i in range(5)]
         for batch_idx, data in enumerate(
-            tqdm(test_loader, disable=not accelerator.is_local_main_process)
+            tqdm(
+                test_loader,
+                desc=f"Stage1 eval epoch {epoch}/{num_epochs}",
+                disable=not accelerator.is_local_main_process,
+            )
         ):
             with torch.no_grad():
                 if batch_idx < 10:
