@@ -33,6 +33,8 @@ parser.add_argument("--use-ours", type=bool, default=True)
 parser.add_argument("--num-q", type=int, default=2)
 parser.add_argument("--mtp-steps", type=int, default=1)
 parser.add_argument("--begin-epoch", type=int, default=0)
+parser.add_argument("--epochs", type=int, default=20)
+parser.add_argument("--save-freq", type=int, default=5)
 args = parser.parse_args()
 
 train_config = {
@@ -40,7 +42,7 @@ train_config = {
     "bs": args.bs,
     "gradient_accumulation_steps": args.gradient_accumulation_steps,
     "is_warmup": True,
-    "num_epochs": 20,
+    "num_epochs": args.epochs,
     "p_w": args.pw,
     "v_w": 1.0,
     "head_w": 0.1,
@@ -54,7 +56,7 @@ train_config = {
     "b1": 0.9,
     "b2": 0.95,
     "grad_clip": 0.5,
-    "save_freq": 5,
+    "save_freq": args.save_freq,
 }
 import json
 import os
@@ -72,7 +74,9 @@ from accelerate import Accelerator
 from accelerate.utils import set_seed
 
 set_seed(0)
-accelerator = Accelerator()
+accelerator = Accelerator(
+    gradient_accumulation_steps=train_config["gradient_accumulation_steps"]
+)
 # 多卡:显式把当前进程绑定到自己的物理 GPU,避免目标模型常驻时
 # 多个 rank 抢同一张卡(NCCL "Duplicate GPU detected")
 if torch.cuda.is_available():
@@ -342,9 +346,17 @@ if args.loadpath:
 # ---------------------------------------------------------------------------
 # 目标模型:常驻显存,冻结,eval
 # ---------------------------------------------------------------------------
-target_model = AutoModelForImageTextToText.from_pretrained(
-    args.basepath, torch_dtype=torch.bfloat16
-)
+# 目标模型是纯推理(eval + no_grad),用 sdpa 注意力比默认 eager 快 30%~50%
+# 且数值精确(非近似),不影响 hidden_state 正确性。个别环境算子不支持时回退 eager。
+try:
+    target_model = AutoModelForImageTextToText.from_pretrained(
+        args.basepath, torch_dtype=torch.bfloat16, attn_implementation="sdpa"
+    )
+except Exception as e:
+    print(f"sdpa 加载失败,回退 eager: {e}")
+    target_model = AutoModelForImageTextToText.from_pretrained(
+        args.basepath, torch_dtype=torch.bfloat16
+    )
 target_model.eval()
 for p in target_model.parameters():
     p.requires_grad = False

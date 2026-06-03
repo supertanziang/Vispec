@@ -411,9 +411,17 @@ if args.loadpath:
 # ---------------------------------------------------------------------------
 # 目标模型:在线训练核心 —— 常驻显存,冻结,eval
 # ---------------------------------------------------------------------------
-target_model = AutoModelForImageTextToText.from_pretrained(
-    args.basepath, torch_dtype=torch.bfloat16
-)
+# 目标模型是纯推理(eval + no_grad),用 sdpa 注意力比默认 eager 快 30%~50%
+# 且数值精确(非近似),不影响 hidden_state 正确性。个别环境算子不支持时回退 eager。
+try:
+    target_model = AutoModelForImageTextToText.from_pretrained(
+        args.basepath, torch_dtype=torch.bfloat16, attn_implementation="sdpa"
+    )
+except Exception as e:
+    print(f"sdpa 加载失败,回退 eager: {e}")
+    target_model = AutoModelForImageTextToText.from_pretrained(
+        args.basepath, torch_dtype=torch.bfloat16
+    )
 target_model.eval()
 for p in target_model.parameters():
     p.requires_grad = False

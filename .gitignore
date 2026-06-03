@@ -223,3 +223,4 @@ results/
 checkpoints/
 wandb/
 logs/
+docs/

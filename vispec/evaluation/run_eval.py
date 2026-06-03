@@ -80,6 +80,18 @@ MODELS = {
         "family": "qwen",
         "tokenizer_path": "model/Qwen2.5-VL-7B-Instruct",
     },
+    "qwen_stage1_s20": {
+        "base_path": "model/Qwen2.5-VL-7B-Instruct",
+        "spec_path": "checkpoints/stage1_qwen7b_online/state_20",
+        "family": "qwen",
+        "tokenizer_path": "model/Qwen2.5-VL-7B-Instruct",
+    },
+    "qwen_stage2_s15": {
+        "base_path": "model/Qwen2.5-VL-7B-Instruct",
+        "spec_path": "checkpoints/stage2_qwen7b_online/state_15",
+        "family": "qwen",
+        "tokenizer_path": "model/Qwen2.5-VL-7B-Instruct",
+    },
     "qwen_3b": {
         "base_path": "model/Qwen2.5-VL-3B-Instruct",
         "spec_path": "model/ViSpec-Qwen2.5-VL-3B-Instruct",
@@ -158,7 +170,7 @@ def out_paths(model, bench, method_tag, temp):
     return base_dir, spec_dir, base_jsonl, spec_jsonl
 
 
-def run_one(mode, model, bench, temp, gpu, force=False):
+def run_one(mode, model, bench, temp, gpu, force=False, num_gpus_total=1):
     """跑单个 (mode, model, bench, temp);mode ∈ {'baseline','spec'}。返回输出 jsonl 路径。"""
     m = MODELS[model]
     b = BENCHMARKS[bench]
@@ -187,6 +199,7 @@ def run_one(mode, model, bench, temp, gpu, force=False):
         "--bench-name", bench_name,
         "--temperature", str(temp),
         "--max-new-token", str(MAX_NEW_TOKEN),
+        "--num-gpus-total", str(num_gpus_total),
     ]
     if b["data_folder"] is not None:
         cmd += ["--data-folder", b["data_folder"]]
@@ -205,7 +218,7 @@ def run_one(mode, model, bench, temp, gpu, force=False):
     if HF_TOKEN:
         env["HF_TOKEN"] = HF_TOKEN
 
-    print(f"  [run ] {mode} {model}/{bench}/T={temp} (family={family})")
+    print(f"  [run ] {mode} {model}/{bench}/T={temp} (family={family}, num_gpus={num_gpus_total})")
     print("        " + " ".join(cmd))
     ret = subprocess.run(cmd, env=env)
     if ret.returncode != 0:
@@ -299,7 +312,8 @@ def main():
                     help=f"逗号分隔,可选 {list(BENCHMARKS)};默认 {DEFAULT_BENCHMARKS}")
     ap.add_argument("--temperatures", type=str, default=None,
                     help=f"逗号分隔;默认 {DEFAULT_TEMPERATURES}")
-    ap.add_argument("--gpu", type=str, default=GPU, help=f"用哪块 GPU,默认 {GPU}")
+    ap.add_argument("--gpu", type=str, default=GPU, help=f"CUDA_VISIBLE_DEVICES,默认 {GPU}")
+    ap.add_argument("--num-gpus-total", type=int, default=1, help="总 GPU 数(用 ray 多卡分片),默认 1")
     ap.add_argument("--skip-baseline", action="store_true", help="不跑 baseline(已有时)")
     ap.add_argument("--skip-spec", action="store_true", help="不跑 spec")
     ap.add_argument("--only-summary", action="store_true", help="跳过推理,只汇总已有输出")
@@ -321,6 +335,7 @@ def main():
     print(f"temperatures= {temperatures}")
     print(f"spec hparams= {SPEC_HPARAMS}")
     print(f"gpu         = {args.gpu}")
+    print(f"num_gpus    = {args.num_gpus_total}")
 
     if not args.only_summary:
         for model in models:
@@ -328,9 +343,11 @@ def main():
                 for temp in temperatures:
                     print(f"\n>>> {model} | {bench} | T={temp}")
                     if not args.skip_baseline:
-                        run_one("baseline", model, bench, temp, args.gpu, force=args.force)
+                        run_one("baseline", model, bench, temp, args.gpu,
+                                force=args.force, num_gpus_total=args.num_gpus_total)
                     if not args.skip_spec:
-                        run_one("spec", model, bench, temp, args.gpu, force=args.force)
+                        run_one("spec", model, bench, temp, args.gpu,
+                                force=args.force, num_gpus_total=args.num_gpus_total)
 
     summarize(models, benchmarks, temperatures)
 

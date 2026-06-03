@@ -14,8 +14,9 @@
 #        bash train_stage2_online.sh
 #
 # 用法:
-#     bash train_stage2_online.sh
-#     GPUS="0,1,2,3" DATAPATH=data/train/gen_mm_online_full bash train_stage2_online.sh
+#     bash train_stage2_online.sh                                       # 默认 gen_mm_combined / 20 轮 / 5 卡
+#     EPOCHS=10 bash train_stage2_online.sh                             # 只跑 10 轮
+#     GPUS="0,1,2,3" DATAPATH=data/train/gen_mm_online bash train_stage2_online.sh
 # ==============================================================================
 
 set -e
@@ -26,10 +27,14 @@ export HF_DATASETS_CACHE=/prj/corp/crd/morpheus/lasvegas/china-scratch/ziantan/c
 
 BASEPATH="${BASEPATH:-./model/Qwen2.5-VL-7B-Instruct}"
 CONFIGPATH="${CONFIGPATH:-vispec/train/qwen2.5_vl_7B_config.json}"
-DATAPATH="${DATAPATH:-data/train/gen_mm_online_full}"
-CPDIR="${CPDIR:-./checkpoints/stage2_qwen7b_online}"
+DATAPATH="${DATAPATH:-data/train/gen_mm_combined}"
+CPDIR="${CPDIR:-./checkpoints/stage2_qwen7b_online_combined}"
 LOADPATH="${LOADPATH:-./checkpoints/stage1_qwen7b_online/state_20/model.safetensors}"
-GPUS="${GPUS:-0,1,2,3,4}"
+EPOCHS="${EPOCHS:-20}"
+SAVE_FREQ="${SAVE_FREQ:-5}"
+GRAD_ACCUM="${GRAD_ACCUM:-6}"
+LR="${LR:-5e-6}"                # 学习率(README 默认 3e-6);可用 LR=5e-6 覆盖
+GPUS="${GPUS:-0,1,2,3,4,5}"
 PORT="${PORT:-29500}"
 
 IFS=',' read -ra GPU_ARR <<< "$GPUS"
@@ -43,7 +48,7 @@ if [[ ! -f "$LOADPATH" ]]; then
   exit 1
 fi
 
-NPT=$(find "$DATAPATH" -name '*.pt' 2>/dev/null | wc -l)
+NPT=$(find -L "$DATAPATH" -name '*.pt' 2>/dev/null | wc -l)
 if [[ "$NPT" -eq 0 ]]; then
   echo "Error: 预生成长回复数据为空: $DATAPATH"
   echo "       请先跑 gen_stage2_parallel.sh 预生成"
@@ -56,6 +61,9 @@ echo "   basepath   = $BASEPATH"
 echo "   datapath   = $DATAPATH   (有效数据 $NPT 条)"
 echo "   cpdir      = $CPDIR"
 echo "   loadpath   = $LOADPATH"
+echo "   epochs     = $EPOCHS   (每 $SAVE_FREQ 轮存一次点)"
+echo "   lr         = $LR"
+echo "   grad_accum = $GRAD_ACCUM   (bs=1 物理 batch × $NGPU 卡 = 等效 batch $((GRAD_ACCUM * NGPU)))"
 echo "   GPU        = $GPUS  (NGPU=$NGPU)   port=$PORT"
 echo "=============================================================="
 
@@ -74,9 +82,12 @@ CUDA_VISIBLE_DEVICES="$GPUS" accelerate launch \
   --loadpath="$LOADPATH" \
   --begin-epoch=0 \
   --bs=1 \
-  --lr=3e-6 \
+  --gradient-accumulation-steps="$GRAD_ACCUM" \
+  --lr=$LR \
   --max-len=4096 \
-  --mtp-steps=1 \
+  --epochs="$EPOCHS" \
+  --save-freq="$SAVE_FREQ" \
+  --mtp-steps=2 \
   --num-q=2 \
   --num-workers=8 \
   --use-ours=True

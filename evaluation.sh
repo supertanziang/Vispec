@@ -35,8 +35,11 @@ BENCHMARKS="${BENCHMARKS:-mmvet,sqa,mme}"
 # 采样温度(逗号分隔)。0.0=贪心(快、可复现);1.0=随机采样(对齐论文双档)
 TEMPERATURES="${TEMPERATURES:-0.0}"
 
-# 用哪块 GPU(单卡评测)
-GPU="${GPU:-0}"
+# 用哪块 GPU(逗号分隔,多卡时如 "0,1")
+GPU="${GPU:-0,1,2,3,4}"
+
+# 总 GPU 数(与 --num-gpus-total 对应,多卡用 ray 分片)
+NUM_GPUS_TOTAL="${NUM_GPUS_TOTAL:-1}"
 
 # ViSpec 投机解码超参(spec 推理用)
 #   DEPTH       : 草稿 token 树深度(猜多少步)
@@ -67,7 +70,7 @@ echo " ViSpec 评测"
 echo "   models       = $MODELS"
 echo "   benchmarks   = $BENCHMARKS"
 echo "   temperatures = $TEMPERATURES"
-echo "   gpu          = $GPU"
+echo "   gpu          = $GPU  (num_gpus_total=$NUM_GPUS_TOTAL)"
 echo "   spec 超参    = depth=$DEPTH top_k=$TOP_K total_token=$TOTAL_TOKEN num_q=$NUM_Q"
 echo "=============================================================="
 
@@ -81,4 +84,5 @@ python -m vispec.evaluation.run_eval \
     --benchmarks "$BENCHMARKS" \
     --temperatures "$TEMPERATURES" \
     --gpu "$GPU" \
+    --num-gpus-total "$NUM_GPUS_TOTAL" \
     "$@"

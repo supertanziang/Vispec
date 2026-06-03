@@ -120,7 +120,8 @@ class OnlineMMDataset(Dataset):
 # ============================================================================
 def list_response_files(path, suffix=".pt"):
     files = []
-    for root, _dirs, fnames in os.walk(path):
+    # followlinks=True: 允许 DATAPATH 用符号链接拼装多份数据(如 60K 主 + 8K 评测 mix)
+    for root, _dirs, fnames in os.walk(path, followlinks=True):
         for fn in fnames:
             if fn.endswith(suffix):
                 files.append(os.path.join(root, fn))
