@@ -5,7 +5,7 @@
 # 与离线 train_stage2.sh 区别:目标模型常驻显存,训练循环里对(图片+预生成长回复)
 # 实时 forward 算 hidden state。需先用 gen_stage2_parallel.sh 预生成长回复 token。
 #
-# 超参严格对齐 README 2.2(lr=3e-6 / bs=1 / max-len=4096 / mtp-steps=1 / num-q=2)。
+# 超参严格对齐 README 2.2(lr=3e-6 / bs=1 / max-len=4096 / mtp-steps=2 / num-q=2)。
 #
 # 完整流程:
 #   1) 先并行预生成长回复(只存 token,几 KB/条):

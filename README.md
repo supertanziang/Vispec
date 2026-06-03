@@ -112,7 +112,7 @@ accelerate launch --multi_gpu \
   --loadpath=<path_to_stage1_checkpoint>/state_20/model.safetensors \
   --lr=3e-6 \
   --max-len=4096 \
-  --mtp-steps=1 \
+  --mtp-steps=2 \
   --num-q=2 \
   --num-workers=8 \
   --tmpdir=<path_to_multimodal_data_folder> \

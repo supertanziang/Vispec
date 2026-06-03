@@ -8,7 +8,7 @@
 #   - tmpdir          : Stage 2 用的多模态数据 (qwen_pretrain_gen)
 #   - cpdir           : 输出 checkpoint 目录
 #   - loadpath        : Stage 1 训完的 state_20/model.safetensors
-#   - lr=3e-6 / bs=1 / max-len=4096 / num-workers=8 / mtp-steps=1 / num-q=2
+#   - lr=3e-6 / bs=1 / max-len=4096 / num-workers=8 / mtp-steps=2 / num-q=2
 #   - use-ours=True   : 启用 ViSpec
 # 用法:
 #     bash train_stage2.sh                                # 用默认 stage1 ckpt
@@ -61,7 +61,7 @@ accelerate launch --multi_gpu \
   --loadpath="$LOADPATH" \
   --lr=3e-6 \
   --max-len=4096 \
-  --mtp-steps=1 \
+  --mtp-steps=2 \
   --num-q=2 \
   --num-workers=8 \
   --tmpdir="$TMPDIR_DATA" \

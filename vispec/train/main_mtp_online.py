@@ -11,7 +11,7 @@ prompt_len / image_file),训练时:
   2. 目标模型 forward → 末层 hidden_state(末层)+ embedding 层
   3. 右移构造 target,走 ImgAdaptor + MTP + 蒸馏 loss(与离线一致)
 
-用法见 train_stage2_online.sh。超参与 README 2.2 一致(lr=3e-6 mtp-steps=1 num-q=2)。
+用法见 train_stage2_online.sh。超参与 README 2.2 一致(lr=3e-6 mtp-steps=2 num-q=2)。
 ==============================================================================
 """
 
@@ -31,7 +31,7 @@ parser.add_argument("--num-workers", type=int, default=2)
 parser.add_argument("--max-len", type=int, default=4096)
 parser.add_argument("--use-ours", type=bool, default=True)
 parser.add_argument("--num-q", type=int, default=2)
-parser.add_argument("--mtp-steps", type=int, default=1)
+parser.add_argument("--mtp-steps", type=int, default=2)
 parser.add_argument("--begin-epoch", type=int, default=0)
 parser.add_argument("--epochs", type=int, default=20)
 parser.add_argument("--save-freq", type=int, default=5)
