@@ -40,6 +40,7 @@ class SpecModel(nn.Module):
         threshold,
         spec_layer_state_dict,
         num_q: int = 2,
+        n_placeholder: int = None,
     ):
 
         super().__init__()
@@ -70,6 +71,7 @@ class SpecModel(nn.Module):
             top_k=top_k,
             threshold=threshold,
             num_q=num_q,
+            n_placeholder=n_placeholder,
         )
 
         low_memory = False
@@ -117,6 +119,7 @@ class SpecModel(nn.Module):
         top_k=8,
         threshold=1.0,
         num_q: int = 2,
+        n_placeholder: int = None,
         **kwargs,
     ):
         # assert Type=="LLaMA" or "Mixtral"
@@ -174,6 +177,7 @@ class SpecModel(nn.Module):
             threshold,
             spec_layer_state_dict,
             num_q=num_q,
+            n_placeholder=n_placeholder,
         )
 
         if total_token == -1:
@@ -211,6 +215,7 @@ class SpecModel(nn.Module):
         position_ids=None,
         inputs_embeds=None,
         output_real_hidden=False,
+        output_vis_hiddens=False,
         **kwargs,
     ):
         if (
@@ -237,6 +242,14 @@ class SpecModel(nn.Module):
                 orig = outputs.logits
             hidden_states = outputs.hidden_states[-1]
 
+        if output_vis_hiddens:
+            # 取 LLM backbone 低/中/高三层 hidden 给 ImgAdaptor(已算好，零额外计算)。
+            Hs = outputs.hidden_states
+            L = len(Hs) - 1
+            vis_hiddens = (Hs[L // 4], Hs[L // 2], Hs[-1])
+            if output_orig:
+                return None, orig, hidden_states, vis_hiddens
+            return None, hidden_states, vis_hiddens
         if output_real_hidden:
             return None, orig, hidden_states, outputs.hidden_states
         if output_orig:

@@ -273,13 +273,27 @@ def initialize_tree(
     image_mask=None,
     **kwargs,
 ):
-    outputs, orig, hidden_states = model(
-        input_ids,
-        past_key_values=past_key_values,
-        output_orig=True,
-        inputs_embeds=inputs_embeds,
-        **kwargs,
-    )
+    # ViSpec(cnets_ours)的草稿模型带 ImgAdaptor，需要 LLM backbone 三层视觉 hidden。
+    # 纯文本草稿模型(cnets)没有 imadpt，走原路径。
+    use_vis = hasattr(model.spec_layer, "imadpt")
+    vis_hiddens = None
+    if use_vis:
+        outputs, orig, hidden_states, vis_hiddens = model(
+            input_ids,
+            past_key_values=past_key_values,
+            output_orig=True,
+            inputs_embeds=inputs_embeds,
+            output_vis_hiddens=True,
+            **kwargs,
+        )
+    else:
+        outputs, orig, hidden_states = model(
+            input_ids,
+            past_key_values=past_key_values,
+            output_orig=True,
+            inputs_embeds=inputs_embeds,
+            **kwargs,
+        )
 
     if logits_processor is not None:
         logits = orig[:, -1]
@@ -292,6 +306,9 @@ def initialize_tree(
     input_ids = torch.cat((input_ids, token.to(input_ids.device)), dim=1)
     # Clone the output hidden states
 
+    gen_kwargs = {}
+    if use_vis:
+        gen_kwargs["vis_hiddens"] = vis_hiddens
     try:
         draft_tokens, retrieve_indices, tree_mask, tree_position_ids = (
             model.spec_layer.topK_genrate(
@@ -302,6 +319,7 @@ def initialize_tree(
                 inputs_embeds=inputs_embeds,
                 # embed_weights=embed_weights,
                 image_mask=image_mask,
+                **gen_kwargs,
             )
         )
     except:
@@ -314,6 +332,7 @@ def initialize_tree(
                 inputs_embeds=inputs_embeds,
                 # embed_weights=embed_weights,
                 image_mask=image_mask,
+                **gen_kwargs,
             )
         )
     return (

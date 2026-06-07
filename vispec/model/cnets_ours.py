@@ -600,65 +600,112 @@ class LlamaDecoderLayer(nn.Module):
         return outputs
 
 
-class ImgAdaptor(nn.Module):
-    def __init__(self, config, num_q=2):
+class _CrossAttnRefineBlock(nn.Module):
+    """单层 cross-attention：用当前 query 去 attend 某一层级的视觉 hidden，refine query。
+
+    query 形状 [bsz, num_q, H]，feat 形状 [bsz, N_img, H]，输出仍 [bsz, num_q, H]
+    （residual + RMSNorm，gate 标量控制该层贡献，便于初期关掉低/中层）。
+    """
+
+    def __init__(self, config, gate_init=0.0):
         super().__init__()
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
         self.head_dim = self.hidden_size // self.num_heads
-        self.num_q = num_q
 
-        self.q = nn.Parameter(torch.empty(self.num_q, self.num_heads, self.head_dim))
-
-        nn.init.normal_(self.q, mean=0, std=self.head_dim**-0.5)
-
-        if hasattr(config, "qkv_bias"):
-            bias = config.qkv_bias
-        else:
-            bias = False
-
+        bias = config.qkv_bias if hasattr(config, "qkv_bias") else False
+        self.q_proj = nn.Linear(
+            self.hidden_size, self.num_heads * self.head_dim, bias=bias
+        )
         self.k_proj = nn.Linear(
             self.hidden_size, self.num_heads * self.head_dim, bias=bias
         )
         self.v_proj = nn.Linear(
             self.hidden_size, self.num_heads * self.head_dim, bias=bias
         )
+        self.norm = LlamaRMSNorm(
+            self.hidden_size, eps=getattr(config, "rms_norm_eps", 1e-6)
+        )
+        # 门控标量：low/mid 初始化为 0(初期不参与)，high 初始化为 1 → 初期≈只用高层
+        self.gate = nn.Parameter(torch.tensor(float(gate_init)))
+
+    def forward(self, query: torch.Tensor, feat: torch.Tensor) -> torch.Tensor:
+        bsz, num_q, _ = query.size()
+        seq_len = feat.shape[1]
+
+        q = (
+            self.q_proj(query)
+            .view(bsz, num_q, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+        )
+        k = (
+            self.k_proj(feat)
+            .view(bsz, seq_len, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+        )
+        v = (
+            self.v_proj(feat)
+            .view(bsz, seq_len, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+        )
+
+        attn_output = torch.nn.functional.scaled_dot_product_attention(
+            query=q.contiguous(),
+            key=k.contiguous(),
+            value=v.contiguous(),
+            is_causal=False,
+        )
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        attn_output = attn_output.reshape(bsz, num_q, self.hidden_size)
+
+        return self.norm(query + self.gate * attn_output)
+
+
+class ImgAdaptor(nn.Module):
+    """三层串行 refine cross-attention：learnable query 依次 attend 低/中/高层视觉 hidden。
+
+    输出 num_q = n_placeholder + n_summary 个向量：
+      - 前 n_placeholder 个 → 占位向量，进压缩序列(草稿 token 可经 attention 寻址)
+      - 后 n_summary(固定 1) 个 → 整图摘要，存 last_img_hidden 广播给后续文本
+
+    feat_low/mid/high 形状均 [bsz, N_img, H]，输出 [bsz, num_q, H]。
+    """
+
+    def __init__(self, config, n_placeholder=1, n_summary=1):
+        super().__init__()
+        self.hidden_size = config.hidden_size
+        self.num_heads = config.num_attention_heads
+        self.head_dim = self.hidden_size // self.num_heads
+        self.n_placeholder = n_placeholder
+        self.n_summary = n_summary
+        self.num_q = n_placeholder + n_summary
+
+        self.q = nn.Parameter(torch.empty(self.num_q, self.num_heads, self.head_dim))
+        nn.init.normal_(self.q, mean=0, std=self.head_dim**-0.5)
+
+        # 三层串行 refine：query 依次被低→中→高层精炼
+        self.block_low = _CrossAttnRefineBlock(config, gate_init=0.0)
+        self.block_mid = _CrossAttnRefineBlock(config, gate_init=0.0)
+        self.block_high = _CrossAttnRefineBlock(config, gate_init=1.0)
+
         self.o_proj = nn.Linear(
             self.num_heads * self.head_dim, self.hidden_size, bias=False
         )
 
-    def forward(self, hidden_states: torch.Tensor):
-        bsz, seq_len, _ = hidden_states.size()
+    def forward(self, feat_low, feat_mid, feat_high):
+        bsz = feat_high.size(0)
 
-        query_states = self.q
-        key_states = self.k_proj(hidden_states)
-        value_states = self.v_proj(hidden_states)
-
-        query_states = (
-            query_states.view(1, self.num_q, self.num_heads, self.head_dim)
-            .transpose(1, 2)
+        query = (
+            self.q.reshape(1, self.num_q, self.hidden_size)
             .repeat_interleave(bsz, dim=0)
-        )
-        key_states = key_states.view(
-            bsz, seq_len, self.num_heads, self.head_dim
-        ).transpose(1, 2)
-        value_states = value_states.view(
-            bsz, seq_len, self.num_heads, self.head_dim
-        ).transpose(1, 2)
-
-        attn_output = torch.nn.functional.scaled_dot_product_attention(
-            query=query_states.contiguous(),
-            key=key_states.contiguous(),
-            value=value_states.contiguous(),
-            is_causal=False,
+            .to(feat_high.dtype)
         )
 
-        attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.reshape(bsz, self.num_q, self.hidden_size)
+        query = self.block_low(query, feat_low)
+        query = self.block_mid(query, feat_mid)
+        query = self.block_high(query, feat_high)
 
-        attn_output = self.o_proj(attn_output)
-
-        return attn_output
+        return self.o_proj(query)  # [bsz, num_q, H]
 
 
 class Model(nn.Module):
@@ -674,6 +721,7 @@ class Model(nn.Module):
         top_k=8,
         threshold=1.0,
         num_q=2,
+        n_placeholder=None,
     ):
         super().__init__()
 
@@ -748,7 +796,12 @@ class Model(nn.Module):
         self.act = ACT2FN[config.hidden_act]
         self.logsoftmax = nn.LogSoftmax(dim=-1)
 
-        self.imadpt = ImgAdaptor(config, num_q)
+        # n_placeholder: 进序列的占位向量数(默认从 num_q 推导，= num_q-1，等价旧行为)。
+        # 摘要数固定 1。num_q = n_placeholder + 1。
+        if n_placeholder is None:
+            n_placeholder = max(0, num_q - 1)
+        self.n_placeholder = n_placeholder
+        self.imadpt = ImgAdaptor(config, n_placeholder=n_placeholder, n_summary=1)
         self.img_fc = nn.Linear(2 * config.hidden_size, config.hidden_size, bias=bias)
 
         nn.init.zeros_(self.img_fc.weight[:, config.hidden_size :])
@@ -828,6 +881,7 @@ class Model(nn.Module):
         return_dict: Optional[bool] = None,
         std=None,
         image_mask=None,
+        vis_hiddens=None,
     ):
         batch_size, seq_length, _ = hidden_states.shape
         seq_length_with_past = seq_length
@@ -892,8 +946,16 @@ class Model(nn.Module):
 
         inputs_embeds = inputs_embeds.to(hidden_states)
 
+        # 三层视觉 hidden(低/中/高)用于 ImgAdaptor。未提供时回退到「三层都用 inputs_embeds
+        # 的图像位」(等价旧单层行为)，保证向后兼容。
+        if vis_hiddens is None:
+            vis_low = vis_mid = vis_high = inputs_embeds
+        else:
+            vis_low, vis_mid, vis_high = (v.to(hidden_states) for v in vis_hiddens)
+
         trans_mat = None
         if image_mask is not None and past_key_values is None:
+            n_ph = self.n_placeholder
             new_hidden_states = []
             new_position_ids = []
             new_trans_mat = []
@@ -919,26 +981,32 @@ class Model(nn.Module):
                     txt_hidden = hidden_states[b, img_id_start:img_id_end][~cur_img_msk]
                     txt_img = self.last_img_hidden.expand_as(txt_hidden)
                     hidden = self.img_fc(torch.cat((txt_hidden, txt_img), dim=-1))
-                    h_s.append(self.fc(torch.cat((txt_emd, hidden), dim=-1)))
+                    txt_hs = self.fc(torch.cat((txt_emd, hidden), dim=-1))
+                    h_s.append(txt_hs)
+                    # 文本段对应的 trans_mat 行 / position_ids
+                    p_i.append(position_ids[b, img_id_start:img_id_end][~cur_img_msk])
+                    t_m.append(eye_m[img_id_start : img_id_start + txt_hs.shape[0], :])
 
-                    img_emd = inputs_embeds[b, img_id_start:img_id_end][
+                    # ImgAdaptor 三层 refine：低/中/高层视觉 hidden 在图像位的切片
+                    feat_l = vis_low[b, img_id_start:img_id_end][cur_img_msk].unsqueeze(
+                        0
+                    )
+                    feat_m = vis_mid[b, img_id_start:img_id_end][cur_img_msk].unsqueeze(
+                        0
+                    )
+                    feat_h = vis_high[b, img_id_start:img_id_end][
                         cur_img_msk
                     ].unsqueeze(0)
-                    img_adapted = self.imadpt(img_emd).squeeze(0)
-                    h_s.append(img_adapted[:-1])
+                    img_adapted = self.imadpt(feat_l, feat_m, feat_h).squeeze(0)
 
-                    self.last_img_hidden = img_adapted[-1:]
+                    # 前 n_ph 个 → 占位(进序列)；后 n_summary(=1) 个 → 摘要(广播)
+                    if n_ph > 0:
+                        h_s.append(img_adapted[:n_ph])
+                        # 占位向量贴回原始序列图像段最右端 n_ph 个位置
+                        p_i.append(position_ids[b, img_id_end - n_ph : img_id_end])
+                        t_m.append(eye_m[img_id_end - n_ph : img_id_end, :])
+                    self.last_img_hidden = img_adapted[n_ph:]
 
-                    p_i += [
-                        position_ids[b, img_id_start:img_id_end][~cur_img_msk],
-                        position_ids[
-                            b, img_id_end - img_adapted.shape[0] + 1 : img_id_end
-                        ],
-                    ]
-                    t_m += [
-                        eye_m[img_id_start : img_id_start + h_s[0].shape[0], :],
-                        eye_m[img_id_end - h_s[1].shape[0] : img_id_end, :],
-                    ]
                     img_id_start = img_id_end
 
                 rst_emd = inputs_embeds[b, img_id_start:]
@@ -976,9 +1044,10 @@ class Model(nn.Module):
         else:
             if past_key_values is None:
                 self.last_img_hidden = torch.zeros_like(hidden_states[0, :1, ...])
-                inputs_embeds[:, 0] += (self.imadpt(inputs_embeds[:, :1]) * 0).sum(
-                    1
-                )  # dummy
+                dummy_feat = inputs_embeds[:, :1]
+                inputs_embeds[:, 0] += (
+                    self.imadpt(dummy_feat, dummy_feat, dummy_feat) * 0
+                ).sum(1)  # dummy: 让 ImgAdaptor 参与计算图(无图/纯文本 prefill)
             hidden_states = self.img_fc(
                 torch.cat(
                     (hidden_states, self.last_img_hidden.expand_as(hidden_states)),
@@ -1018,16 +1087,21 @@ class Model(nn.Module):
                 next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
 
         if trans_mat is not None:
-            hidden_states = torch.einsum(
-                "bn...,bnm->bm...", hidden_states, trans_mat.to(hidden_states)
+            # trans_mat[b] 每行是 eye 的 one-hot 行(压缩位 n → 唯一原始位 m)，等价于散射。
+            # 用 index_copy 替代稠密 einsum：复杂度从 O(S'·S·H) 降到 O(S'·H)，
+            # 未被映射的原始位(图像段内被压掉的位置)自然为 0，与旧 einsum 逐元素一致。
+            tm = trans_mat.to(hidden_states)
+            B, Sc, S = tm.shape
+            dst = tm.argmax(dim=-1)  # [B, S'] 每个压缩位对应的原始位
+            scattered = hidden_states.new_zeros(
+                (B, S) + tuple(hidden_states.shape[2:])
             )
+            for b in range(B):
+                scattered[b].index_copy_(0, dst[b], hidden_states[b])
+            hidden_states = scattered
             if attentions is not None:
-                attentions = torch.einsum(
-                    "bhn...,bnm->bhm...", attentions, trans_mat.to(attentions)
-                )
-                attentions = torch.einsum(
-                    "bh...n,bnm->bh...m", attentions, trans_mat.to(attentions)
-                )
+                attentions = torch.einsum("bhn...,bnm->bhm...", attentions, tm)
+                attentions = torch.einsum("bh...n,bnm->bh...m", attentions, tm)
 
         if use_cache:
             return hidden_states, next_decoder_cache
@@ -1050,6 +1124,7 @@ class Model(nn.Module):
         inputs_embeds=None,
         embed_weights=None,
         image_mask=None,
+        vis_hiddens=None,
     ):
 
         input_ids = input_ids.to(hidden_states.device)
@@ -1079,6 +1154,16 @@ class Model(nn.Module):
                 ] *= embed_weights
             inputs_embeds.to(input_ids.device)
             new_embeds = self.embed_tokens(input_ids[:, inputs_embeds.shape[-2] :])
+            # vis_hiddens 必须与 inputs_embeds 经历同样的左移(drop 首位 + 拼尾)，
+            # 才能与 forward 内同样左移的 image_mask 对齐。图像位都在 prompt 前缀里，
+            # 尾部(新生成 token)是文本、ImgAdaptor 不读，故尾部填什么不影响结果。
+            if vis_hiddens is not None:
+                shifted = []
+                for v in vis_hiddens:
+                    v = v.to(hidden_states.device)
+                    pad = v.new_zeros((v.shape[0], new_embeds.shape[-2], v.shape[-1]))
+                    shifted.append(torch.cat((v[:, 1:, :], pad), dim=-2))
+                vis_hiddens = shifted
             inputs_embeds = torch.cat((inputs_embeds[:, 1:, :], new_embeds), dim=-2)
 
         input_ids = input_ids[:, 1:]
@@ -1104,6 +1189,7 @@ class Model(nn.Module):
                 inputs_embeds=inputs_embeds,
                 use_cache=True,
                 image_mask=image_mask,
+                vis_hiddens=vis_hiddens,
             )
         self.stable_kv = past_key_values
         last_hidden = out_hidden[:, -1]
